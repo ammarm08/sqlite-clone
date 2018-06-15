@@ -27,29 +27,30 @@ Buffer* make_buffer() {
 
 
 
+
 /*
   METACOMMAND
 */
 
 enum MetaCommandResult_t {
-  META_COMMAND_SUCCESS,
-  META_COMMAND_UNRECOGNIZED_COMMAND
+  META_SUCCESS,
+  META_UNRECOGNIZED
 };
 typedef enum MetaCommandResult_t MetaCommandResult;
 
-MetaCommandResult do_meta_command(Buffer* buf) {
-  if (strcmp(buf->line, ".exit") == 0) {
+MetaCommandResult do_meta_command(char* cmd) {
+  if (strcmp(cmd, ".exit") == 0) {
     exit(EXIT_SUCCESS);
   } else {
-    return META_COMMAND_UNRECOGNIZED_COMMAND;
+    return META_UNRECOGNIZED;
   }
-};
+}
 
 
 
 
 /*
-  SQL STATEMENT
+  STATEMENT
 */
 
 enum StatementType_t {
@@ -63,6 +64,11 @@ struct Statement_t {
 };
 typedef struct Statement_t Statement;
 
+Statement* make_statement() {
+  Statement* statement = malloc(sizeof(Statement));
+  return statement;
+}
+
 
 
 
@@ -72,45 +78,30 @@ typedef struct Statement_t Statement;
 
 enum PrepareResult_t {
   PREPARE_SUCCESS,
-  PREPARE_UNRECOGNIZED_STATEMENT
+  PREPARE_UNRECOGNIZED
 };
 typedef enum PrepareResult_t PrepareResult;
 
 PrepareResult prepare_statement(Buffer* buf, Statement* statement) {
-  // partial match: insert 1 foo bar
   if (strncmp(buf->line, "insert", 6) == 0) {
     statement->type = STATEMENT_INSERT;
     return PREPARE_SUCCESS;
   }
 
-  // exact match: select
   if (strcmp(buf->line, "select") == 0) {
     statement->type = STATEMENT_SELECT;
     return PREPARE_SUCCESS;
   }
 
   // otherwise
-  return PREPARE_UNRECOGNIZED_STATEMENT;
-};
-
-
+  return PREPARE_UNRECOGNIZED;
+}
 
 
 
 /*
   FUNCTIONS
 */
-
-void execute_statement(Statement* statement) {
-  switch(statement->type) {
-    case (STATEMENT_INSERT):
-      printf("This is where we would do an insert.\n");
-      break;
-    case (STATEMENT_SELECT):
-      printf("This is where we would do a select.\n");
-      break;
-  }
-}
 
 void print_prompt() { printf("db > "); }
 
@@ -129,9 +120,24 @@ void read_input(Buffer* buf) {
   buf->line[bytes_read - 1] = 0;
 };
 
+bool is_meta (char* str) {
+  if (str[0] == '.') {
+    return true;
+  } else {
+    return false;
+  }
+}
 
-
-
+void execute_statement(Statement* statement) {
+  switch (statement->type) {
+    case (STATEMENT_INSERT):
+      printf("Insertion stub\n");
+      break;
+    case (STATEMENT_SELECT):
+      printf("Select stub\n");
+      break;
+  }
+}
 
 
 int main(int argc, char* argv[]) {
@@ -143,28 +149,32 @@ int main(int argc, char* argv[]) {
 
     // case 1: meta command
 
-    if (line_buffer->line[0] == '.') {
-      switch (do_meta_command(line_buffer)) {
-        case (META_COMMAND_SUCCESS):
+    if (is_meta(line_buffer->line)) {
+      switch (do_meta_command(line_buffer->line)) {
+        case (META_SUCCESS):
           continue;
-        case (META_COMMAND_UNRECOGNIZED_COMMAND):
-          printf("Unrecognized command '%s'\n", line_buffer->line);
+        case (META_UNRECOGNIZED):
+          printf("Unrecognized meta command '%s'\n", line_buffer->line);
           continue;
       }
     }
 
-    // case 2: prepare and execute sql statement
 
-    Statement statement;
-    switch (prepare_statement(line_buffer, &statement)) {
+    // case 2: prepare and execute sql statement (mutative)
+
+    Statement* statement = make_statement();
+    switch (prepare_statement(line_buffer, statement)) {
       case (PREPARE_SUCCESS):
         break;
-      case (PREPARE_UNRECOGNIZED_STATEMENT):
-        printf("Unrecognized keyword at start of '%s'.\n", line_buffer->line);
+      case (PREPARE_UNRECOGNIZED):
+        printf("Unrecognized keyword at start of '%s'\n", line_buffer->line);
         continue;
     }
 
-    execute_statement(&statement);
+
+    // execute statement
+
+    execute_statement(statement);
     printf("Executed.\n");
   }
 }
