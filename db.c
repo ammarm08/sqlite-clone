@@ -28,24 +28,6 @@ Buffer* make_buffer() {
 
 
 
-/*
-  METACOMMAND
-*/
-
-enum MetaCommandResult_t {
-  META_SUCCESS,
-  META_UNRECOGNIZED
-};
-typedef enum MetaCommandResult_t MetaCommandResult;
-
-MetaCommandResult do_meta_command(char* cmd) {
-  if (strcmp(cmd, ".exit") == 0) {
-    exit(EXIT_SUCCESS);
-  } else {
-    return META_UNRECOGNIZED;
-  }
-}
-
 
 
 /*
@@ -60,6 +42,76 @@ struct Row_t {
   char email[COL_EMAIL_SIZE];
 };
 typedef struct Row_t Row;
+
+#define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute);
+const uint32_t ID_SIZE = size_of_attribute(Row, id);
+const uint32_t USERNAME_SIZE = size_of_attribute(Row, username);
+const uint32_t EMAIL_SIZE = size_of_attribute(Row, email);
+
+const uint32_t ID_OFFSET = 0; // because it is the first field
+const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
+const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
+const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
+
+void serialize_row(Row* src, void* dest) {
+  memcpy(dest + ID_OFFSET, &(src->id), ID_SIZE);
+  memcpy(dest + USERNAME_OFFSET, &(src->username), USERNAME_SIZE);
+  memcpy(dest + EMAIL_OFFSET, &(src->email), EMAIL_SIZE);
+};
+
+void deserialize_row(void* src, Row* dest) {
+  memcpy(&(dest->id), src + ID_OFFSET, ID_SIZE);
+  memcpy(&(dest->username), src + USERNAME_OFFSET, USERNAME_SIZE);
+  memcpy(&(dest->email), src + EMAIL_OFFSET, EMAIL_SIZE);
+};
+
+void print_row(Row* row) {
+  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+};
+
+
+
+
+
+
+/*
+  TABLE
+*/
+
+const uint32_t PAGE_SIZE = 4096; // 4kb
+const uint32_t TABLE_MAX_PAGES = 100;
+const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
+const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+
+struct Table_t {
+  void* pages[TABLE_MAX_PAGES];
+  uint32_t num_rows;
+};
+typedef struct Table_t Table;
+
+Table* make_table() {
+  Table* table = malloc(sizeof(Table));
+  table->num_rows = 0;
+
+  return table;
+};
+
+void* row_address(Table* table, uint32_t row_num) {
+  uint32_t page_num = row_num / ROWS_PER_PAGE;
+  void* page = table->pages[page_num];
+
+  if (!page) {
+    page = table->pages[page_num] = malloc(PAGE_SIZE);
+  }
+
+  uint32_t row_offset = row_num % ROWS_PER_PAGE;
+  uint32_t byte_offset = row_offset * ROW_SIZE;
+
+  return page + byte_offset;
+};
+
+
+
 
 
 
@@ -128,6 +180,80 @@ PrepareResult prepare_statement(Buffer* buf, Statement* statement) {
 
 
 
+
+
+
+
+/*
+  EXECUTE STATEMENT
+*/
+
+enum ExecuteResult_t {
+  EXECUTE_SUCCESS,
+  EXECUTE_TABLE_FULL
+};
+typedef enum ExecuteResult_t ExecuteResult;
+
+ExecuteResult execute_insert(Statement* statement, Table* table) {
+  if (table->num_rows >= TABLE_MAX_ROWS) {
+    return EXECUTE_TABLE_FULL;
+  }
+
+  // append
+  serialize_row(
+    &(statement->row_to_insert),
+    row_address(table, table->num_rows)
+  );
+
+  table->num_rows += 1;
+
+  return EXECUTE_SUCCESS;
+};
+
+ExecuteResult execute_select(Statement* statement, Table* table) {
+  // print every row in the table
+  Row row;
+  for (uint32_t i = 0; i < table->num_rows; i++) {
+    deserialize_row(row_address(table, i), &row);
+    print_row(&row);
+  }
+
+  return EXECUTE_SUCCESS;
+};
+
+ExecuteResult execute_statement(Statement* statement, Table* table) {
+  switch (statement->type) {
+    case (STATEMENT_INSERT):
+      return execute_insert(statement, table);
+    case (STATEMENT_SELECT):
+      return execute_select(statement, table);
+  }
+};
+
+
+
+/*
+  METACOMMANDS
+*/
+
+enum MetaCommandResult_t {
+  META_SUCCESS,
+  META_UNRECOGNIZED
+};
+typedef enum MetaCommandResult_t MetaCommandResult;
+
+MetaCommandResult do_meta_command(char* cmd) {
+  if (strcmp(cmd, ".exit") == 0) {
+    exit(EXIT_SUCCESS);
+  } else {
+    return META_UNRECOGNIZED;
+  }
+}
+
+
+
+
+
 /*
   FUNCTIONS
 */
@@ -149,7 +275,7 @@ void read_input(Buffer* buf) {
   buf->line[bytes_read - 1] = 0;
 };
 
-bool is_meta (char* str) {
+bool is_metacommand (char* str) {
   if (str[0] == '.') {
     return true;
   } else {
@@ -157,45 +283,15 @@ bool is_meta (char* str) {
   }
 }
 
-void execute_statement(Statement* statement) {
-  switch (statement->type) {
-    case (STATEMENT_INSERT):
-      printf(
-        "Insertion stub: %d, %s, %s \n",
-        statement->row_to_insert.id,
-        statement->row_to_insert.username,
-        statement->row_to_insert.email
-      );
-      break;
-    case (STATEMENT_SELECT):
-      printf("Select stub\n");
-      break;
-  }
-}
 
 
-/*
-  Next steps:
 
-  append-only insertion execution.
-
-  1. prepare to make sure inserts are insert %d %s %s format
-    - if so, continue
-    - if not, syntax error
-  DONE
-
-  once this is done, then we can continue with the rest
-
-  2. print info about what data is about to get inserted
-  3. create a Table data structure to store data in-memory
-  4. on insert, print info about where it will be stored
-  5. on insert, store in Table
-  6. on select, print everything in table
-*/
 
 
 int main(int argc, char* argv[]) {
+  Table* table = make_table();
   Buffer* line_buffer = make_buffer();
+  Statement* statement = make_statement();
 
   while (true) {
     print_prompt();
@@ -203,7 +299,7 @@ int main(int argc, char* argv[]) {
 
     // case 1: meta command
 
-    if (is_meta(line_buffer->line)) {
+    if (is_metacommand(line_buffer->line)) {
       switch (do_meta_command(line_buffer->line)) {
         case (META_SUCCESS):
           continue;
@@ -216,7 +312,6 @@ int main(int argc, char* argv[]) {
 
     // case 2: prepare and execute sql statement (mutative)
 
-    Statement* statement = make_statement();
     switch (prepare_statement(line_buffer, statement)) {
       case (PREPARE_SUCCESS):
         break;
@@ -231,7 +326,13 @@ int main(int argc, char* argv[]) {
 
     // execute statement
 
-    execute_statement(statement);
-    printf("Executed.\n");
+    switch (execute_statement(statement, table)) {
+      case (EXECUTE_SUCCESS):
+        printf("Executed.\n");
+        break;
+      case (EXECUTE_TABLE_FULL):
+        printf("Error: Table full.\n");
+        break;
+    }
   }
 }
