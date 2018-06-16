@@ -48,6 +48,21 @@ MetaCommandResult do_meta_command(char* cmd) {
 
 
 
+/*
+  ROW
+*/
+
+const uint32_t COL_USERNAME_SIZE = 32;
+const uint32_t COL_EMAIL_SIZE = 255;
+struct Row_t {
+  uint32_t id;
+  char username[COL_USERNAME_SIZE];
+  char email[COL_EMAIL_SIZE];
+};
+typedef struct Row_t Row;
+
+
+
 
 /*
   STATEMENT
@@ -61,6 +76,7 @@ typedef enum StatementType_t StatementType;
 
 struct Statement_t {
   StatementType type;
+  Row row_to_insert; // for inserts only
 };
 typedef struct Statement_t Statement;
 
@@ -78,12 +94,25 @@ Statement* make_statement() {
 
 enum PrepareResult_t {
   PREPARE_SUCCESS,
+  PREPARE_SYNTAX_ERROR,
   PREPARE_UNRECOGNIZED
 };
 typedef enum PrepareResult_t PrepareResult;
 
 PrepareResult prepare_statement(Buffer* buf, Statement* statement) {
   if (strncmp(buf->line, "insert", 6) == 0) {
+    // reads values to fields into statement
+    int assigned_args = sscanf(
+      buf->line,
+      "insert %d %s %s",
+      &(statement->row_to_insert.id), // %d value
+      statement->row_to_insert.username, // %s char pointer
+      statement->row_to_insert.email // %s char pointer
+    );
+    if (assigned_args < 3) {
+      return PREPARE_SYNTAX_ERROR;
+    }
+
     statement->type = STATEMENT_INSERT;
     return PREPARE_SUCCESS;
   }
@@ -140,6 +169,19 @@ void execute_statement(Statement* statement) {
 }
 
 
+/*
+  Next steps:
+
+  append-only insertion execution.
+
+  1. prepare to make sure inserts are insert %d %s %s format
+    - if so, continue
+    - if not, syntax error
+
+  once this is done, then we can continue with the rest
+*/
+
+
 int main(int argc, char* argv[]) {
   Buffer* line_buffer = make_buffer();
 
@@ -166,6 +208,9 @@ int main(int argc, char* argv[]) {
     switch (prepare_statement(line_buffer, statement)) {
       case (PREPARE_SUCCESS):
         break;
+      case (PREPARE_SYNTAX_ERROR):
+        printf("Syntax error in statement '%s'\n", line_buffer->line);
+        continue;
       case (PREPARE_UNRECOGNIZED):
         printf("Unrecognized keyword at start of '%s'\n", line_buffer->line);
         continue;
