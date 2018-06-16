@@ -89,7 +89,7 @@ Statement* make_statement() {
 
 
 /*
-  PREPARED STATEMENT
+  PREPARE STATEMENT
 */
 
 enum PrepareResult_t {
@@ -160,7 +160,12 @@ bool is_meta (char* str) {
 void execute_statement(Statement* statement) {
   switch (statement->type) {
     case (STATEMENT_INSERT):
-      printf("Insertion stub\n");
+      printf(
+        "Insertion stub: %d, %s, %s \n",
+        statement->row_to_insert.id,
+        statement->row_to_insert.username,
+        statement->row_to_insert.email
+      );
       break;
     case (STATEMENT_SELECT):
       printf("Select stub\n");
@@ -177,8 +182,15 @@ void execute_statement(Statement* statement) {
   1. prepare to make sure inserts are insert %d %s %s format
     - if so, continue
     - if not, syntax error
+  DONE
 
   once this is done, then we can continue with the rest
+
+  2. print info about what data is about to get inserted
+  3. create a Table data structure to store data in-memory
+  4. on insert, print info about where it will be stored
+  5. on insert, store in Table
+  6. on select, print everything in table
 */
 
 
