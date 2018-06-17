@@ -1,5 +1,11 @@
 RSpec.describe 'database' do
-  before do
+  # delete and recompile db executable before starting suite
+  before(:all) do
+    `rm -rf a.out; gcc db.c`
+  end
+
+  # delete test dbfile before each test
+  before(:each) do
     `rm -rf test.db`
   end
 
