@@ -574,6 +574,41 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
 
 
 
+Cursor* internal_node_find(Table* table, uint32_t page_num, uint32_t key) {
+  /*
+    binary search across an internal node to find key.
+    if key is leaf_node -> call leaf_node_find
+    else recursive call to next level internal node
+  */
+
+  void* node = get_page(table->pager, page_num);
+  uint32_t num_keys = *internal_node_num_keys(node);
+
+  uint32_t min = 0;
+  uint32_t max = num_keys;
+
+  while (min != max) {
+    uint32_t mid = (min + max) / 2;
+    uint32_t key_to_right = *internal_node_key(node, mid);
+    if (key_to_right >= key) {
+      max = mid;
+    } else {
+      min = mid + 1;
+    }
+  }
+
+  uint32_t child_num = *internal_node_child(node, min);
+  void* child = get_page(table->pager, child_num);
+  switch (get_node_type(child)) {
+    case NODE_LEAF:
+      return leaf_node_find(table, child_num, key);
+    case NODE_INTERNAL:
+      return internal_node_find(table, child_num, key);
+  }
+};
+
+
+
 void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
   void* old_node = get_page(cursor->table->pager, cursor->page_num);
 
@@ -751,8 +786,7 @@ Cursor* table_find(Table* table, uint32_t key) {
   if (get_node_type(root_node) == NODE_LEAF) {
     return leaf_node_find(table, root_page_num, key);
   } else {
-    printf("Need to implement searching an internal node\n");
-    exit(EXIT_FAILURE);
+    return internal_node_find(table, root_page_num, key);
   }
 };
 

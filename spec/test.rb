@@ -15,7 +15,11 @@ RSpec.describe 'database' do
 
     IO.popen(db_executable, "r+") do |pipe|
       commands.each do |command|
-        pipe.puts command
+        begin
+          pipe.puts command
+        rescue Errno::EPIPE
+          break
+        end
       end
 
       pipe.close_write
@@ -46,7 +50,10 @@ RSpec.describe 'database' do
     end
     script << ".exit"
     result = run_script(script)
-    expect(result[-2]).to eq("db > Error: Table full.")
+    expect(result.last(2)).to match_array([
+      "db > Executed.",
+      "db > Need to implement updating parent after split"
+    ])
   end
 
   it 'allows inserting strings that are the maximum length' do
@@ -184,7 +191,7 @@ RSpec.describe 'database' do
     script << ".exit"
     result = run_script(script)
 
-    expect(result[14...(result.length)]).to match_array([
+    expect(result[14...(result.length)]).to eq([
       "db > Tree:",
       "- internal (size 1)",
       "\t- leaf (size 7)",
@@ -204,7 +211,8 @@ RSpec.describe 'database' do
       "\t\t- 12",
       "\t\t- 13",
       "\t\t- 14",
-      "db > Need to implement searching an internal node"
+      "db > Executed.",
+      "db > "
     ])
   end
 end
