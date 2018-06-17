@@ -193,7 +193,6 @@ void pager_flush(Pager* pager, uint32_t page_num, uint32_t size) {
 
 
 
-
 struct Table_t {
   Pager* pager;
   uint32_t num_rows;
@@ -256,21 +255,57 @@ void db_close(Table* table) {
   free(pager);
 };
 
-void* row_address(Table* table, uint32_t row_num) {
-  uint32_t page_num = row_num / ROWS_PER_PAGE;
 
-  void* page = get_page(table->pager, page_num);
+
+
+
+
+/*
+  CURSOR
+*/
+
+struct Cursor_t {
+  Table* table;
+  uint32_t row_num;
+  bool end_of_table;
+};
+typedef struct Cursor_t Cursor;
+
+Cursor* table_start(Table* table) {
+  Cursor* cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = 0;
+  cursor->end_of_table = (table->num_rows == 0);
+
+  return cursor;
+};
+
+Cursor* table_end(Table* table) {
+  Cursor* cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = table->num_rows;
+  cursor->end_of_table = true;
+
+  return cursor;
+};
+
+void cursor_advance(Cursor* cursor) {
+  cursor->row_num += 1;
+  if (cursor->row_num >= cursor->table->num_rows) {
+    cursor->end_of_table = true;
+  }
+};
+
+void* cursor_value(Cursor* cursor) {
+  uint32_t row_num = cursor->row_num;
+  uint32_t page_num = row_num / ROWS_PER_PAGE;
+  void* page = get_page(cursor->table->pager, page_num);
 
   uint32_t row_offset = row_num % ROWS_PER_PAGE;
   uint32_t byte_offset = row_offset * ROW_SIZE;
 
   return page + byte_offset;
 };
-
-
-
-
-
 
 
 /*
@@ -398,24 +433,31 @@ ExecuteResult execute_insert(Statement* statement, Table* table) {
     return EXECUTE_TABLE_FULL;
   }
 
-  // append
-  serialize_row(
-    &(statement->row_to_insert),
-    row_address(table, table->num_rows)
-  );
+  Row* row_to_insert = &(statement->row_to_insert);
+  Cursor* cursor = table_end(table); // jump to end
 
+  // append
+  serialize_row(row_to_insert, cursor_value(cursor));
   table->num_rows += 1;
+
+  free(cursor);
 
   return EXECUTE_SUCCESS;
 };
 
 ExecuteResult execute_select(Statement* statement, Table* table) {
+  Cursor* cursor = table_start(table); // jump to start
+
   // print every row in the table
   Row row;
-  for (uint32_t i = 0; i < table->num_rows; i++) {
-    deserialize_row(row_address(table, i), &row);
+  while (!(cursor->end_of_table)) {
+    deserialize_row(cursor_value(cursor), &row);
     print_row(&row);
+
+    cursor_advance(cursor);
   }
+
+  free(cursor);
 
   return EXECUTE_SUCCESS;
 };
