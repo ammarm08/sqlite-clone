@@ -640,9 +640,13 @@ void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value) {
     uint32_t index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT;
     void* dest = leaf_node_cell(dest_node, index_within_node);
 
-    // write if new entry else copy old to new
+    // write if new entry (key + value) else copy old to new
     if (i == cursor->cell_num) {
-      serialize_row(value, dest);
+      serialize_row(
+        value,
+        leaf_node_value(dest_node, index_within_node) // necessary to avoid writing in key space
+      );
+      *leaf_node_key(dest_node, index_within_node) = key;
     } else if (i > cursor->cell_num) {
       memcpy(dest, leaf_node_cell(old_node, i - 1), LEAF_NODE_CELL_SIZE);
     } else {
